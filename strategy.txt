@@ -1,0 +1,602 @@
+Yes — I understand. You want an end-to-end multilingual voice product with:
+
+STT for German, English, Spanish, French, Nepali
+TTS for the same 5 languages
+proper data collection + fine-tuning
+a client-facing website
+user can record speech → get text
+user can enter text → get speech
+and you want this planned as a real portfolio-grade project, not a toy.
+
+The strongest way to build this is not to train everything from scratch. Use strong multilingual base models, fine-tune where it matters, and build a clean production-style app around them. Whisper is a strong multilingual ASR baseline, Common Voice is a major open speech dataset, XTTS-v2 supports English/Spanish/French/German but not Nepali, and MMS provides very broad multilingual ASR/TTS coverage including low-resource languages.
+
+End-to-End Strategy: Multilingual STT + TTS Web Product
+1. Project goal
+
+Build a web app where a user can:
+
+pick a language: en / de / es / fr / ne
+click Record
+get speech-to-text
+type text
+click Speak
+get text-to-speech audio
+optionally choose voice / gender / speed
+
+This should feel like a polished client demo, with a backend that can later support fine-tuned models and API deployment.
+
+2. Best technical strategy
+My recommendation
+STT
+
+Use Whisper as the primary STT base model, then fine-tune/adapt for your data, especially for Nepali and any domain-specific vocabulary. Whisper is multilingual and robust; Hugging Face’s official fine-tuning guide shows multilingual fine-tuning on Common Voice-style data.
+
+TTS
+
+Use a hybrid TTS stack:
+
+English / German / Spanish / French → Coqui XTTS-v2
+Nepali → MMS-TTS or a dedicated Nepali VITS-style model
+
+This is the right move because XTTS-v2 officially supports English, Spanish, French, and German, but its published supported-language list does not include Nepali. MMS-TTS is designed for 1000+ languages and is a much safer path for Nepali TTS.
+
+Data
+
+Use Mozilla Common Voice as your main open-source dataset source for STT bootstrapping and multilingual coverage. Common Voice has public multilingual voice datasets and a Nepali locale page.
+
+3. Final architecture
+Frontend (Next.js)
+  ├─ Record audio in browser
+  ├─ Upload audio for STT
+  ├─ Text input for TTS
+  ├─ Audio playback
+  └─ Language/voice selector
+
+Backend (FastAPI)
+  ├─ /stt
+  │   ├─ detect language or accept selected language
+  │   ├─ run Whisper / fine-tuned Whisper
+  │   └─ return transcript
+  ├─ /tts
+  │   ├─ choose model by language
+  │   ├─ XTTS-v2 for en/de/es/fr
+  │   ├─ MMS-TTS for ne
+  │   └─ return wav/mp3
+  ├─ /voices
+  └─ /health
+
+Model Layer
+  ├─ STT base: Whisper
+  ├─ STT fine-tuned adapters/checkpoints
+  ├─ TTS base: XTTS-v2
+  └─ Nepali TTS: MMS-TTS / Nepali-specific checkpoint
+
+Training Pipeline
+  ├─ dataset ingestion
+  ├─ cleaning + normalization
+  ├─ train/val/test split
+  ├─ fine-tuning
+  ├─ evaluation
+  └─ model registry
+4. Product scope
+MVP
+
+Build first:
+
+5-language selector
+browser audio recording
+STT inference
+text box for TTS
+TTS playback
+downloadable transcript/audio
+one default voice per language
+V2
+
+Then add:
+
+multiple voices
+voice cloning for supported languages
+speaker selection
+punctuation restoration
+confidence scores
+transcript history
+auth + usage tracking
+5. Model choices
+5.1 STT model
+Best baseline
+
+Whisper small / medium / large-v3, depending your GPU budget.
+
+Why:
+
+multilingual
+strong zero-shot baseline
+fine-tuning path is well documented
+practical for demo and production
+
+OpenAI’s Whisper is multilingual and Hugging Face documents Whisper fine-tuning for multilingual ASR.
+
+Practical choice
+Development: whisper-small or whisper-medium
+Production / demo: whisper-large-v3 if GPU allows
+Nepali improvement: fine-tune a smaller checkpoint for Nepali/domain audio
+Alternative for Nepali-heavy ASR
+
+Use MMS ASR as a comparison baseline because MMS ASR covers 1000+ languages. That gives you a strong fallback for Nepali evaluation.
+
+5.2 TTS model
+For English, German, Spanish, French
+
+Use Coqui XTTS-v2. Its docs list English, Spanish, French, and German among supported languages, and Coqui documents fine-tuning and dataset formatting.
+
+For Nepali
+
+Use MMS-TTS or a Nepali-specific open checkpoint. MMS-TTS explicitly provides text-to-speech models across 1000+ languages, which is the safer multilingual route for Nepali.
+
+Important design decision
+
+Do not force one TTS model for all 5 languages if one of them is unsupported.
+For your project, the best architecture is:
+
+one STT service
+two TTS engines under one API
+
+That is actually more professional.
+
+6. Data strategy
+6.1 STT data sources
+Main source
+
+Mozilla Common Voice for:
+
+English
+German
+Spanish
+French
+Nepali
+
+Common Voice is designed as a public multilingual speech dataset for voice technology.
+
+Additional sources
+
+You can supplement with:
+
+OpenSLR where licenses fit
+your own recorded dataset
+domain-specific audio you create
+Best practice
+
+Use:
+
+70% train
+15% validation
+15% test
+
+And keep speaker separation across splits if possible.
+
+6.2 TTS data sources
+
+For TTS you need:
+
+clean speech clips
+exact transcripts
+ideally 1 speaker per voice model
+consistent sample rate
+low noise
+For XTTS-based tuning
+
+Coqui documents dataset formatting and fine-tuning requirements, including custom formatter/text cleaning when needed.
+
+For Nepali TTS
+
+Prioritize:
+
+clean, single-speaker Nepali recordings
+normalized Devanagari text
+sentence-level alignment
+Data quantity targets
+
+Practical targets:
+
+STT fine-tune: start from 10–50 hours per language
+TTS per voice: 2–10 hours clean speech can be enough for a strong portfolio system with fine-tuning, though quality improves with more curated data
+
+The exact result depends heavily on data cleanliness; Coqui explicitly notes that model performance depends on dataset quality and hyperparameters.
+
+7. Data preprocessing pipeline
+STT preprocessing
+
+For each audio sample:
+
+resample to target sample rate
+normalize volume
+trim long silence
+remove broken/transcript-mismatched files
+normalize punctuation
+normalize numerals
+normalize whitespace
+preserve language script correctly
+Language-specific normalization
+English/French/German/Spanish: normalize apostrophes, punctuation, accented characters
+Nepali: preserve Devanagari, normalize danda/punctuation, digits, spacing
+Very important
+
+Do not over-normalize away useful orthography for French, Spanish, German, or Nepali.
+
+8. Fine-tuning strategy
+8.1 STT fine-tuning plan
+Phase A
+
+Run zero-shot Whisper baseline on all 5 languages.
+
+Phase B
+
+Measure:
+
+WER
+CER
+latency
+Phase C
+
+Fine-tune only where baseline is weak:
+
+Nepali first
+then your target accents/domains
+Why
+
+This is cheaper and smarter than blindly fine-tuning all languages.
+
+Hugging Face’s Whisper fine-tuning material is specifically useful here.
+
+Suggested training progression
+baseline: whisper-small
+improved: whisper-medium
+high-quality endpoint: whisper-large-v3 inference, optionally with fine-tuned smaller model for hard languages
+8.2 TTS fine-tuning plan
+For English/German/Spanish/French
+
+Use XTTS-v2 fine-tuning for:
+
+voice identity
+pronunciation improvements
+consistent style
+
+XTTS-v2 supports inference and Coqui documents fine-tuning workflows plus dataset formatting requirements.
+
+For Nepali
+
+Use:
+
+MMS-TTS baseline first
+then swap in a dedicated Nepali checkpoint or train/fine-tune a Nepali VITS-style model if needed
+Priority order
+get all 5 languages working
+improve quality
+add custom voices
+then optimize latency
+
+That sequence will save you months.
+
+9. Evaluation strategy
+9.1 STT metrics
+
+Track:
+
+WER (word error rate)
+CER (character error rate)
+language detection accuracy
+latency per 10s audio
+punctuation quality
+Test set design
+
+Create separate test buckets:
+
+clean speech
+noisy speech
+accented speech
+long-form speech
+code-switching
+9.2 TTS metrics
+
+Track:
+
+MOS-style human rating
+pronunciation correctness
+naturalness
+speaker consistency
+latency
+language-specific text normalization correctness
+9.3 Business demo metrics
+
+Track:
+
+time from click to transcript
+time from text input to playable audio
+error handling rate
+browser compatibility
+10. Web app strategy
+Frontend stack
+
+Use:
+
+Next.js
+Tailwind CSS
+Web Audio API / MediaRecorder
+waveform UI for polish
+Backend stack
+
+Use:
+
+FastAPI
+PyTorch
+Transformers
+Coqui TTS
+Redis + background queue if synthesis is slow
+Storage
+
+Use:
+
+local disk in dev
+S3-compatible storage in production
+Postgres for job history if you want user accounts
+11. Website UX
+Main page layout
+Left: STT
+language dropdown
+record button
+stop button
+upload audio fallback
+transcript output
+copy/download
+Right: TTS
+language dropdown
+voice dropdown
+text input
+generate speech button
+audio player
+download audio
+Bottom
+recent history
+status / model info
+sample phrases
+12. API design
+STT endpoint
+POST /api/stt
+Content-Type: multipart/form-data
+Fields:
+- audio_file
+- language
+Response
+{
+  "language": "ne",
+  "transcript": "नमस्ते, तपाईंलाई कस्तो छ?",
+  "confidence": 0.91,
+  "duration_sec": 4.2
+}
+TTS endpoint
+POST /api/tts
+Content-Type: application/json
+{
+  "text": "Bonjour, bienvenue sur notre plateforme.",
+  "language": "fr",
+  "voice": "default_female",
+  "speed": 1.0
+}
+Response
+{
+  "audio_url": "/media/tts/job_123.wav",
+  "duration_sec": 3.6
+}
+13. Suggested folder structure
+multilingual-voice-platform/
+│
+├── frontend/
+│   ├── app/
+│   ├── components/
+│   ├── lib/
+│   └── public/
+│
+├── backend/
+│   ├── app/
+│   │   ├── api/
+│   │   │   ├── stt.py
+│   │   │   ├── tts.py
+│   │   │   └── health.py
+│   │   ├── services/
+│   │   │   ├── whisper_service.py
+│   │   │   ├── mms_asr_service.py
+│   │   │   ├── xtts_service.py
+│   │   │   └── nepali_tts_service.py
+│   │   ├── preprocessing/
+│   │   ├── utils/
+│   │   └── main.py
+│   └── requirements.txt
+│
+├── training/
+│   ├── stt/
+│   │   ├── prepare_data.py
+│   │   ├── train_whisper.py
+│   │   ├── eval_stt.py
+│   │   └── configs/
+│   ├── tts/
+│   │   ├── prepare_tts_data.py
+│   │   ├── finetune_xtts.py
+│   │   ├── finetune_nepali_tts.py
+│   │   ├── eval_tts.py
+│   │   └── configs/
+│   └── notebooks/
+│
+├── data/
+├── models/
+├── docs/
+├── docker/
+├── docker-compose.yml
+└── README.md
+14. Phased development plan
+Phase 1 — baseline working product
+
+Goal: get the app working quickly.
+
+Build:
+
+frontend recorder
+backend STT with Whisper
+backend TTS with XTTS + Nepali fallback
+language selector
+audio playback
+Phase 2 — data + evaluation
+
+Build:
+
+data ingestion scripts
+cleaning pipeline
+train/val/test split
+baseline benchmarks
+Phase 3 — fine-tuning
+
+Build:
+
+Whisper fine-tune for Nepali first
+XTTS voice fine-tune for major languages
+Nepali TTS improvement with MMS/dedicated checkpoint
+Phase 4 — production polish
+
+Build:
+
+async job queue
+caching
+auth
+history
+analytics
+deployment
+15. Training roadmap
+Week 1
+finalize scope
+set up repo
+test Whisper inference
+test XTTS inference
+test Nepali MMS-TTS inference
+Week 2
+collect Common Voice subsets
+build cleaning scripts
+create evaluation splits
+build baseline benchmark
+Week 3
+fine-tune STT for Nepali
+compare with baseline
+create evaluation report
+Week 4
+fine-tune TTS for one English voice and one Nepali voice
+test pronunciation quality
+fix normalization issues
+Week 5
+integrate models into FastAPI
+build frontend recording + playback
+connect APIs
+Week 6
+polish UI
+deploy
+add README, architecture diagram, demo video
+16. Deployment strategy
+Development
+local GPU machine
+Docker Compose
+Production
+frontend: Vercel
+backend/model API: RunPod, Modal, Railway GPU, or a GPU VM
+media storage: S3/R2
+caching: Redis
+Important
+
+TTS and STT models can be heavy. For a polished demo:
+
+keep the frontend separate
+keep model inference in its own backend service
+17. Biggest technical risks
+Risk 1: Nepali TTS quality
+
+This is the hardest part because multilingual TTS support is uneven across models. XTTS-v2’s published language list excludes Nepali, so Nepali needs a different route such as MMS-TTS or a dedicated Nepali model.
+
+Risk 2: Data quality
+
+Bad alignments and noisy transcripts will ruin TTS faster than STT.
+
+Risk 3: Browser recording variability
+
+Microphone quality and browser codec differences can hurt STT accuracy.
+
+Risk 4: Latency
+
+Large models can feel slow. Use smaller checkpoints in dev and cache repeated requests.
+
+18. What will make this portfolio project stand out
+
+Do these and it becomes memorable:
+
+support all 5 languages in one polished UI
+show before vs after fine-tuning
+include WER/CER charts
+include audio samples per language
+include model-routing explanation
+add download transcript/audio
+add speaker/voice selector
+Strong portfolio pitch
+
+Built a multilingual speech platform for English, German, Spanish, French, and Nepali with browser-based recording, multilingual speech recognition, hybrid text-to-speech routing, dataset curation, and language-specific fine-tuning for production-style inference.
+
+
+
+
+
+
+
+
+
+
+
+imp to run 
+
+Option 1 — Docker (recommended, easiest)
+Requires: docker and docker compose installed.
+
+
+cd /home/punam/LinguaVoice
+docker compose up --build
+Then open http://localhost in your browser.
+
+First run downloads the Whisper medium model (~1.4 GB) — takes a few minutes
+Frontend is served by Nginx on port 80
+Backend API runs on port 8000 internally (proxied via /api/)
+Model cache is persisted in Docker volumes so restarts are fast
+To use a lighter Whisper model (faster startup):
+
+
+WHISPER_MODEL=small docker compose up --build
+To stop:
+
+
+docker compose down
+Option 2 — Local Python (no Docker)
+Requires: Python 3.11+, ffmpeg installed.
+
+
+cd /home/punam/LinguaVoice
+bash run.sh
+This creates a .venv, installs deps, and starts uvicorn on http://localhost:8000.
+
+Then open frontend/index.html directly in your browser OR in frontend/js/app.js change line 5:
+
+
+const API = 'http://localhost:8000';
+Then just open frontend/index.html as a file in your browser.
+
+First-run notes
+Whisper download	~500 MB (small) to ~1.4 GB (medium) — auto-downloads on first STT request
+Edge TTS	No download needed — streams from Microsoft's API over internet
+GPU	Not required — runs on CPU, but STT will be slower (~10–20s per clip)
+Check ffmpeg is installed (required for audio processing):
+
+
+ffmpeg -version
+If missing: sudo apt install ffmpeg
+

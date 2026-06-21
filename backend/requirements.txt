@@ -1,0 +1,22 @@
+# Core API
+fastapi>=0.110.0
+uvicorn[standard]>=0.29.0
+python-multipart>=0.0.9
+
+# Speech-to-Text
+openai-whisper>=20231117
+# Faster alternative (optional): pip install faster-whisper
+# torch is installed automatically with whisper but listed here for clarity
+torch>=2.0.0
+torchaudio>=2.0.0
+
+# Text-to-Speech (Microsoft Edge TTS – free, high quality, all 5 languages)
+edge-tts>=6.1.9
+
+# Audio processing
+ffmpeg-python>=0.2.0
+numpy>=1.24.0
+
+# Utilities
+python-dotenv>=1.0.0
+aiofiles>=23.0.0

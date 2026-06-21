@@ -1,0 +1,50 @@
+version: "3.9"
+
+services:
+  # ── Backend API ──────────────────────────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: voicebridge_backend
+    restart: unless-stopped
+    environment:
+      - WHISPER_MODEL=${WHISPER_MODEL:-medium}
+      - FINETUNED_MODEL_DIR=${FINETUNED_MODEL_DIR:-}
+      - XTTS_MODEL_DIR=${XTTS_MODEL_DIR:-}
+      - MMS_MODEL_DIR=${MMS_MODEL_DIR:-}
+      - PYTHONUNBUFFERED=1
+    volumes:
+      # Persist downloaded Whisper/HuggingFace models between restarts
+      - whisper_cache:/root/.cache/whisper
+      - hf_cache:/root/.cache/huggingface
+      # Mount fine-tuned models from host (optional)
+      - ./models:/models:ro
+      # For development: hot-reload backend code
+      - ./backend:/app
+    expose:
+      - "8000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s   # Whisper model loading takes time
+
+  # ── Nginx (serves frontend + proxies API) ────────────────────────────────
+  nginx:
+    image: nginx:1.25-alpine
+    container_name: voicebridge_nginx
+    restart: unless-stopped
+    ports:
+      - "${PORT:-80}:80"
+    volumes:
+      - ./frontend:/usr/share/nginx/html:ro
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  whisper_cache:
+  hf_cache:
