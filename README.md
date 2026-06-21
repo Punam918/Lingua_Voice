@@ -677,6 +677,4 @@ This is why the repo contains both the runtime app and the training infrastructu
 - The modular backend in `backend/app/` is the current source of truth.
 - The legacy `backend/main.py` file is still present for compatibility and reference.
 
-## License
 
-No explicit license file is present in the repository. Add one if you plan to publish or share the project.
